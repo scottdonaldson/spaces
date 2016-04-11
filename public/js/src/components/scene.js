@@ -180,7 +180,7 @@ class SceneComponent extends React.Component {
 			color: '#f00'
 		});
 
-		window.addEventListener('mouseup', function() {
+		canvas.addEventListener('mouseup', function() {
 
 			if ( mouse.x === mouseDown.x && mouse.y === mouseDown.y ) {
 
@@ -197,10 +197,22 @@ class SceneComponent extends React.Component {
 		this.init.call(this);
 	}
 
+	clickShit(e) {
+		console.log('clicked shit', e, e.target);
+	}
+
 	render() {
+
+		let styles = {
+			
+		};
+
 		return (
 			<div>
 				<canvas ref="canvas" />
+				<div className="button-group">
+					<button style={styles} onClick={this.clickShit.bind(this)}>PLACE</button>
+				</div>
 			</div>
 		);
 	}
