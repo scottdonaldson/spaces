@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom';
 import THREE from 'three';
 import OrbitControls from 'three-orbit-controls';
 
+import { v4 } from 'uuid';
+
 import { distance, mid, angle } from './point';
 import Car from './car';
 import Segment from './segment';
@@ -15,13 +17,12 @@ class SceneComponent extends React.Component {
 		this.state = { 
 			t: 0,
 			cars: [],
-			keysdown: {}
+			keysdown: {},
+			paused: false
 		};
 	}
 
 	init() {
-
-		let PAUSE = false;
 
 		let _this = this;
 
@@ -30,38 +31,11 @@ class SceneComponent extends React.Component {
 		let segments = [];
 		let objects = { cars: [], segments: [] };
 
-		for ( let i = 0; i < 10; i++ ) {
-
-			let position = {
-				x: Math.random() * 50 - 100,
-				z: Math.random() * 50 - 100,
-				angle: Math.random() * 360
-			};
-
-			let car = Car(position, Scene);
-
-			// :-)
-			car.casualDrive();
-
-			cars.push(car);
-
-			let cube = new THREE.Mesh(
-				new THREE.BoxGeometry(5, 5, 12),
-				new THREE.MeshLambertMaterial({
-					color: '#999'
-				})
-			);
-
-			cube.position.set(position.x, position.y, position.z);
-
-			objects.cars.push(cube);
-			Scene.add(cube);
-		}
-
 		this.setState({ cars }, function() {
 			window.car = _this.state.cars[0];
 		});
 
+		// ground plane
 		let Plane = new THREE.Mesh(
 			new THREE.PlaneGeometry(10000, 10000),
 			new THREE.MeshLambertMaterial({ color: '#ccc' })
@@ -77,13 +51,14 @@ class SceneComponent extends React.Component {
 			new THREE.Vector3( 0, 0, 240 )
 		);
 
+		// ground axes
 		var material = new THREE.LineBasicMaterial({
 			color: 0x0000ff
-		});
-
-		var line = new THREE.Line( geometry, material );
+		}),
+		line = new THREE.Line( geometry, material );
 		Scene.add( line );
 
+		// community center
 		let Circle = new THREE.Mesh(
 			new THREE.CircleGeometry(120, 40),
 			new THREE.MeshBasicMaterial({ 
@@ -95,54 +70,12 @@ class SceneComponent extends React.Component {
 		Circle.rotation.set(-Math.PI / 2, 0, 0);
 		Scene.add(Circle);
 
-		/* function renderSphere(x = 0, y = 0, z = 0) {
-			let Sphere = new THREE.Mesh(
-				new THREE.SphereGeometry(5, 12, 12),
-				new THREE.MeshStandardMaterial({ 
-					color: '#ee9',
-					metalness: 0
-				})
-			);
-			Sphere.position.set(x, y, z);
-			Scene.add(Sphere);
-		}
-
-		renderSphere();
-		renderSphere(50, 0, 50);
-		renderSphere(100, 0, 0);
-
-		renderSegment({ x: 50 }, { z: 50 });
-		renderSegment({ x: -50 }, { z: 50 });
-		renderSegment({ x: -50 }, { z: -50 });
-		renderSegment({ x: 50 }, { z: -50 });
-		renderSegment({}, { x: 100 });
-
-		function renderSegment(pt1, pt2) {
-			
-			let segment = Segment(pt1, pt2);
-			segments.push(segment);
-
-			pt1 = segment.pt1;
-			pt2 = segment.pt2;
-
-			let street = new THREE.Mesh(
-				new THREE.PlaneGeometry(distance(pt1, pt2), 10),
-				new THREE.MeshLambertMaterial({ color: '#555', side: THREE.DoubleSide })
-			);
-
-			let m = mid(pt1, pt2),
-				a = angle(pt1, pt2);
-			street.rotation.set( -Math.PI / 2, 0, a - Math.PI / 2 );
-			street.position.set(m.x, m.y, m.z); // flipping z and y since we rotate
-			
-			objects.segments.push(street);
-			Scene.add(street);
-		} */
-
-		const canvas = ReactDOM.findDOMNode(this);
+		const canvas = this.refs.canvas;
+		const mouse = new THREE.Vector2();
+		const raycaster = new THREE.Raycaster();
 
 		let Camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 10000 );
-		Camera.position.set(140, 50, 140);
+		Camera.position.set(150, 100, 150);
 
 		let ThreeOrbitControls = OrbitControls(THREE);
 		let controls = new ThreeOrbitControls( Camera, canvas );
@@ -173,6 +106,8 @@ class SceneComponent extends React.Component {
 		Light.target = new THREE.Mesh();
 		Scene.add(Light);
 
+		var intersects = [],
+			planeIntersection;
 
 		let render = function() {
 
@@ -180,55 +115,18 @@ class SceneComponent extends React.Component {
 
 			_this.setState({ t: t + 1 });
  
-			_this.state.cars.forEach(function(car, i) {
-
-				let q = Math.sin(t / 100);
-
-				/* if ( i === 0 && car.getSpeed() > 0.2 ) {
-					car.turn(0.5);
-				}
-
-				if ( t === 100 ) {
-					car.start(2.5);
-				} else if ( t === 500 ) {
-					car.stop();
-				} */
-
-				if ( '38' in _this.state.keysdown ) {
-					car.setAcceleration( 0.01 );
-				}
-
-				if ( '40' in _this.state.keysdown ) {
-					car.setAcceleration( -0.01 );
-				}
-
-				if ( '37' in _this.state.keysdown ) {
-					car.turn( -car.getSpeed() );
-				}
-
-				if ( '39' in _this.state.keysdown ) {
-					car.turn( car.getSpeed() );
-				}
-
-				if ( car.getSpeed() >= 0.5 && !('40' in _this.state.keysdown) ) {
-					car.setAcceleration();
-				}
-
-				// render car in 3d
-				let loc = car.getLocation();
-				objects.cars[i].position.set(loc.x, loc.y + 2.5, loc.z);
-				objects.cars[i].rotation.set( 0, car.getAngle(), 0 );
-
-				car.tick();
-			});
-
 			Renderer.render(Scene, Camera);
 
-			if ( !PAUSE ) {
+			raycaster.setFromCamera(mouse, Camera);
+			intersects = raycaster.intersectObjects([ Plane ]);
+			
+			if ( Camera.position.y < 50 ) Camera.position.setY(50);
+
+			if ( !this.state.paused ) {
 				window.requestAnimationFrame(render);
 				// setTimeout(render, 50);
 			}
-		};
+		}.bind(this);
 
 		render();
 
@@ -244,27 +142,55 @@ class SceneComponent extends React.Component {
 		window.addEventListener('keydown', function(e) {
 
 			if ( e.keyCode === 32 ) {
-				if ( PAUSE ) {
-					PAUSE = false;
+				if ( !this.state.paused ) {
+					this.setState({ paused: true });
 					render();
 				} else {
-					PAUSE = true;
+					this.setState({ paused: false });
 				}
 			}
+		}.bind(this));
+
+		canvas.addEventListener('mousemove', function(e) {
+			mouse.x = 2 * e.layerX / canvas.width - 1;
+			mouse.y = -2 * e.layerY / canvas.height + 1;
+
+			if ( intersects[0] ) {
+				previewMesh.position.setX(intersects[0].point.x);
+				previewMesh.position.setZ(intersects[0].point.z);
+				previewMesh.rotation.set(0, Math.atan(Camera.position.x / Camera.position.z), 0);
+			}
+		}.bind(this));
+
+		var previewGeo = new THREE.BoxGeometry(20, 10, 20);
+		var previewMesh = new THREE.Mesh(previewGeo, new THREE.MeshLambertMaterial({
+			opacity: 0.5,
+			transparent: true
+		}));
+		Scene.add(previewMesh);
+
+		var mouseDown = {};
+
+		window.addEventListener('mousedown', function() {
+			mouseDown.x = mouse.x;
+			mouseDown.y = mouse.y;
 		});
-		/*
-		window.addEventListener('keyup', function(e) {
 
-			e.preventDefault();
-			
-			let keysdown = _this.state.keysdown;
-			
-			if ( e.keyCode in keysdown ) delete keysdown[e.keyCode];
-			
-			_this.setState({ keysdown });
-		}); */
+		var newMaterial = new THREE.MeshLambertMaterial({
+			color: '#f00'
+		});
 
-		// window.addEventListener('click', () => CLICKED = true);
+		window.addEventListener('mouseup', function() {
+
+			if ( mouse.x === mouseDown.x && mouse.y === mouseDown.y ) {
+
+				var newMesh = previewMesh.clone();
+				newMesh.material = newMaterial;
+				Scene.add(newMesh);
+
+			}
+		});
+
 	}
 
 	componentDidMount() {
@@ -273,7 +199,9 @@ class SceneComponent extends React.Component {
 
 	render() {
 		return (
-			<canvas />
+			<div>
+				<canvas ref="canvas" />
+			</div>
 		);
 	}
 }

@@ -34,7 +34,8 @@
     "serve-favicon": "~2.3.0",
     "slug": "^0.9.1",
     "three": "^0.74.0",
-    "three-orbit-controls": "^72.0.0"
+    "three-orbit-controls": "^72.0.0",
+    "uuid": "^2.0.1"
   },
   "devDependencies": {
     "autoprefixer": "^6.3.3",
