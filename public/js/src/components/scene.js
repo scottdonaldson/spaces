@@ -6,6 +6,7 @@ import OrbitControls from 'three-orbit-controls';
 import { v4 } from 'uuid';
 
 import { distance, mid, angle } from './point';
+import intersect from './intersection';
 import Car from './car';
 import Segment from './segment';
 
@@ -16,9 +17,10 @@ class SceneComponent extends React.Component {
 
 		this.state = { 
 			t: 0,
-			cars: [],
 			keysdown: {},
-			paused: false
+			paused: false,
+			placing: false,
+			boxes: []
 		};
 	}
 
@@ -27,20 +29,12 @@ class SceneComponent extends React.Component {
 		let _this = this;
 
 		let Scene = new THREE.Scene();
-		let cars = [];
-		let segments = [];
-		let objects = { cars: [], segments: [] };
-
-		this.setState({ cars }, function() {
-			window.car = _this.state.cars[0];
-		});
 
 		// ground plane
 		let Plane = new THREE.Mesh(
 			new THREE.PlaneGeometry(10000, 10000),
 			new THREE.MeshLambertMaterial({ color: '#ccc' })
 		);
-		Plane.position.set(0, -2, 0);
 		Plane.rotation.set( -Math.PI / 2, 0, 0 );
 		Scene.add(Plane);
 
@@ -68,7 +62,12 @@ class SceneComponent extends React.Component {
 			})
 		);
 		Circle.rotation.set(-Math.PI / 2, 0, 0);
+		Circle.position.set(0, 0.5, 0);
 		Scene.add(Circle);
+
+		var circleLight = new THREE.PointLight('#fff', 1, 800);
+		circleLight.position.set(0, 50, 0);
+		Scene.add(circleLight);
 
 		const canvas = this.refs.canvas;
 		const mouse = new THREE.Vector2();
@@ -101,9 +100,11 @@ class SceneComponent extends React.Component {
 
 		Camera.lookAt(new THREE.Vector3(0, 0, 0));
 
-		let Light = new THREE.DirectionalLight('#eee');
-		Light.position.set(0, 100, 100);
-		Light.target = new THREE.Mesh();
+		let Light = new THREE.DirectionalLight('#eee'),
+			lightDistance = 1000,
+			lightPeriod = 2000;
+		Light.position.set(0, lightDistance, 0);
+		Light.target = new THREE.Mesh(); // 0, 0, 0
 		Scene.add(Light);
 
 		var intersects = [],
@@ -114,11 +115,18 @@ class SceneComponent extends React.Component {
 			let t = _this.state.t;
 
 			_this.setState({ t: t + 1 });
+
+			var lightX = lightDistance * Math.sin(2 * Math.PI * t / lightPeriod),
+				lightY = lightDistance * Math.cos(2 * Math.PI * t / lightPeriod),
+				lightZ = lightX;
+
+			Light.position.set( lightX, lightY, lightZ );
  
 			Renderer.render(Scene, Camera);
 
 			raycaster.setFromCamera(mouse, Camera);
-			intersects = raycaster.intersectObjects([ Plane ]);
+			intersects = raycaster.intersectObjects(Scene.children);
+			planeIntersection = raycaster.intersectObjects([ Plane ]);
 			
 			if ( Camera.position.y < 50 ) Camera.position.setY(50);
 
@@ -142,24 +150,51 @@ class SceneComponent extends React.Component {
 		window.addEventListener('keydown', function(e) {
 
 			if ( e.keyCode === 32 ) {
-				if ( !this.state.paused ) {
-					this.setState({ paused: true });
-					render();
-				} else {
-					this.setState({ paused: false });
-				}
+				var paused = !this.state.paused;
+				this.setState({ paused }, render);
 			}
 		}.bind(this));
 
 		canvas.addEventListener('mousemove', function(e) {
+
+			// update mouse
 			mouse.x = 2 * e.layerX / canvas.width - 1;
 			mouse.y = -2 * e.layerY / canvas.height + 1;
 
-			if ( intersects[0] ) {
-				previewMesh.position.setX(intersects[0].point.x);
-				previewMesh.position.setZ(intersects[0].point.z);
-				previewMesh.rotation.set(0, Math.atan(Camera.position.x / Camera.position.z), 0);
+			// update preview mesh
+			previewMesh.visible = this.state.placing;
+
+			// visibility of preview mesh acting as a proxy for placing...
+			// also useful because we might be placing but intersecting with another box
+			// (in which case don't allow placement)
+			if ( previewMesh.visible && planeIntersection[0] ) {
+
+				var x1 = previewMesh.position.x,
+					x2 = Camera.position.x,
+					z1 = previewMesh.position.z,
+					z2 = Camera.position.z;
+				var angle = Math.atan((x1 - x2) / (z1 - z2));
+
+				previewMesh.position.setX( planeIntersection[0].point.x );
+				previewMesh.position.setZ( planeIntersection[0].point.z );
+				previewMesh.rotation.set(0, angle, 0);
+
+				if ( this.state.boxes.length ) {
+					
+					var bbPreview = new THREE.Box3().setFromObject(previewMesh);
+					
+					for ( let box in this.state.boxes ) {
+						
+						var bb = new THREE.Box3().setFromObject(this.state.boxes[box]);
+
+						if ( bb.intersectsBox(bbPreview) ) {
+							previewMesh.visible = false;
+							break;
+						}
+					}
+				}
 			}
+
 		}.bind(this));
 
 		var previewGeo = new THREE.BoxGeometry(20, 10, 20);
@@ -167,6 +202,8 @@ class SceneComponent extends React.Component {
 			opacity: 0.5,
 			transparent: true
 		}));
+		previewMesh.position.setY(5);
+		previewMesh.visible = this.state.placing;
 		Scene.add(previewMesh);
 
 		var mouseDown = {};
@@ -182,14 +219,15 @@ class SceneComponent extends React.Component {
 
 		canvas.addEventListener('mouseup', function() {
 
-			if ( mouse.x === mouseDown.x && mouse.y === mouseDown.y ) {
+			if ( previewMesh.visible && mouse.x === mouseDown.x && mouse.y === mouseDown.y ) {
 
 				var newMesh = previewMesh.clone();
 				newMesh.material = newMaterial;
 				Scene.add(newMesh);
 
+				this.setState({ boxes: this.state.boxes.concat(newMesh) });
 			}
-		});
+		}.bind(this));
 
 	}
 
@@ -198,7 +236,9 @@ class SceneComponent extends React.Component {
 	}
 
 	clickShit(e) {
-		console.log('clicked shit', e, e.target);
+		var placing = this.state.placing;
+		placing = !placing;
+		this.setState({ placing });
 	}
 
 	render() {
